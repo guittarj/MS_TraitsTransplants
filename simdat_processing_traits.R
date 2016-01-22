@@ -1,7 +1,9 @@
-# Processing the simulation data produced by 'neutral_simulation.R' and summarized by 'simdat_processing_veg.R'
+# Processing the simulation data produced by 'neutral_simulation.R' and 
+# summarized by 'simdat_processing_veg.R'
 
-# There are two ways of estimate parameter values. One way is by using the 'bayesian_immigration_estimates.R' script
-# Another way is to choose best-fit parameters to observed rates of vegetation change
+# There are two ways of estimate parameter values. One way is by using the 
+# 'bayesian_immigration_estimates.R' script. Another way is to choose best-fit parameters to 
+# observed rates of vegetation change (currently performed in TraitsTransplants.Rmd -> "rates")
 
 # Calculate trait distances in simulations that used desired parameters
 if (pars.method == 'max') {
@@ -27,14 +29,13 @@ dist.traits <- trait.list3
 # Filter out simulations with unwanted parameters. First at parameter level
 tmp <- plyr::ldply(strsplit(sim.list, '_'))
 
-# sometimes necessary
+# sometimes necessary to fix units
 tmp <- transmute(tmp, m = signif(as.numeric(substring(V1, 2)), 3),
                       d = as.integer(substring(V2, 2)),
                       rep = as.integer(gsub("[^0-9]","",V3)))
-
 sim.list <- sim.list[paste(tmp$d, tmp$m) %in% paste(pars$d, pars$m)]
 
-# Then at the turf*parameter resolution
+# Filter out simulations with unwanted parameters at the turf*parameter resolution
 simsites <- cover.meta$destSiteID[match(simdat.veg$turfID, cover.meta$turfID)]
 simdat <- simdat.veg[paste(simsites, simdat.veg$m, simdat.veg$d) %in% paste(pars$site, pars$m, pars$d)]
 

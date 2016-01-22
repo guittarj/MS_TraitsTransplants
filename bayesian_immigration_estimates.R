@@ -1,3 +1,7 @@
+# A script that estimates immigration rates using JAGS, given the rates of turnover
+# we observe in local controls, and the composition of controls at the site level
+
+#load packages
 loadpax(c("scales","R2jags", "lattice"))
 
 # round cover to nearest unit
@@ -95,6 +99,7 @@ lengs <- lapply(dats, length)
 dats <- unlist(lapply(dats[lengs > 0], mean))
 m.bayes <- mutate(dats.meta, m = dats)
 
+# Visualize immigration rates by species as a running average
 tmp <- group_by(m.bayes, site) %>%
        mutate(seq    = seq_along(m),
               cumave = cumsum(m) / seq)
@@ -110,6 +115,7 @@ dev.off()
 
 flush.console()
 
+# write summary file
 # m.bayes <- group_by(m.bayes, site) %>%
 #            summarise(m = mean(m))
 

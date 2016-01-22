@@ -1,4 +1,4 @@
-# Species list with naming problems (left) and resolutions (right) 
+# Naming problems (left) and resolutions (right) 
 probs <- c(
   '\\ssp\\.$'              = ' sp',
   'Anemona nemorosa'       = 'Anemone nemorosa',
@@ -21,14 +21,10 @@ probs <- c(
   'Veronica chamaedrus'    = 'Veronica chamaedrys'
 )
 
+# naming fixes of substrings (i.e., not full string)
 partial.fixes <- c(' cf' = '', '  ' = ' ', ' ' = '.')
 
-# new: "Bet.pen","Bet.sp","Cer.sp","Emp.sp","Epi.sp","Eri.sp","Fes.sp","Fra.ves",
-# "Gal.sp","Jun.buf","Jun.bul","Jun.fil","Jun.sp","Lyc.vis","Oma.sp","Phe.con",
-# "Poa.sp","Pol.aur","Pot.sp","Pri.ska","Ram.rot","Ran.sp","Sax.riv","Sax.sp",
-# "Sax.ste","Sch.pra","Sil.sp","Sor.sp","Ste.sp","Tri.sp","Urt.dio"
-# dead: "Alo.pra","Ara.hir","Ang.vul",
-
+# naming fixes of whole strings
 full.fixes <- c(
 "Agr" = "Agr.cap",
 "Agr.sp" = "Agr.cap",

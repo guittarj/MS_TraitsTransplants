@@ -4,22 +4,26 @@
 # User settings
 
 # where should newly generated data go?
-wd.sim <-  'E:\\simdata_2015Oct30'
+wd.sim <- ''
 setwd(wd.sim)
-#  dir.create(file.path(paste0(wd, wd.sim)))
+# dir.create(file.path(paste0(wd, wd.sim)))
 
-# What replacement (d) and immigration (m) rates do you want to use?
+# Define replacement (d) and immigration (m) rates
 # Replacement: The number of 'deaths' and 'births' per simulated year
-#d.vals <- seq(0, 100, by = 5)
+# d.vals <- seq(0, 100, by = 5)
+
+# Or, pull turnover rates as calculated in TraitsTransplants.Rmd
 d.vals <- round(rates$turnover)
 
-# Immigration: All new individuals will come from turf (m = 0) or site (m = 1).
+# Immigration: all new individuals will come from turf (m = 0) or site (m = 1).
 m.vals <- seq(0, 1, by = 0.025)
-#m.vals <- signif(m.bayes$m, 3)
 
-# How many reps per d/m combination do you want? 
-rep0 <- 67 
-rep1 <- 100
+# Or, pull immigration rates as calculated from 'bayesian_immigration_estimate.R'
+# m.vals <- signif(m.bayes$m, 3)
+
+# Which rep numbers do you want to perform?
+rep0 <- 1 
+rep1 <- 10
 
 # -------------------------------------------------------
 # Simulation
@@ -33,6 +37,7 @@ sim.empty <- sim
 sim.meta.empty <- sim.meta
 ticker <- 0
 
+# Define simulation as a function
 sim.fun <- function(m, repx, d) {
 
   # Initialize
@@ -115,12 +120,13 @@ sim.fun <- function(m, repx, d) {
 
 # -----------------------------------------------------------
 
+# Loop through parameter combinations, perform simulations
 for (i in rep0:rep1) {
     for(d in d.vals) {
         for(m in m.vals) {
         sim.fun(d = d,
-                 m = m, 
-                 repx = i
+                m = m, 
+                repx = i
 )}}}
 
 setwd(wd)

@@ -158,20 +158,29 @@ trait.data <- filter(trait.data, !is.na(speciescode)) %>%
 con <- odbcConnect('seedclimDB') 
 
 # Cover data
-coverQ <- "SELECT sites.siteID, blocks.blockID, turfs.TTtreat,turfs.turfID, dest_blocks.blockID AS destBlockID, (SELECT Count(subTurfEnvironment.bad) AS CountOfbad
-FROM subTurfEnvironment where (subTurfEnvironment.year = new_TurfCommunity.year) AND (subTurfEnvironment.turfID = new_TurfCommunity.turfID)
- AND ( (subTurfEnvironment.bad)='')) AS notbad, sites.Temperature_level, sites.Precipitation_level, sites.SummerTemperature_gridded, sites.Annualprecipitation_gridded, new_TurfCommunity.Year, new_TurfCommunity.species, new_TurfCommunity.cover, turfEnvironment.recorder , dest_blocks.siteID as destSiteID
-FROM (((blocks AS dest_blocks INNER JOIN plots AS dest_plots ON dest_blocks.blockID = dest_plots.blockID) INNER JOIN (((sites INNER JOIN blocks ON sites.siteID = blocks.siteID) INNER JOIN plots ON blocks.blockID = plots.blockID) 
-INNER JOIN turfs ON plots.plotID = turfs.originPlotID) ON dest_plots.plotID = turfs.destinationPlotID) INNER JOIN new_TurfCommunity ON turfs.turfID = new_TurfCommunity.turfID) INNER JOIN turfEnvironment ON (turfEnvironment.year = new_TurfCommunity.Year) AND (turfs.turfID = turfEnvironment.turfID)
-WHERE NOT turfs.TTtreat='' AND ((Not (new_TurfCommunity.Year)=2010));"
+coverQ <- "SELECT sites.siteID, blocks.blockID, turfs.TTtreat,turfs.turfID, dest_blocks.blockID AS 
+destBlockID, (SELECT Count(subTurfEnvironment.bad) AS CountOfbad FROM subTurfEnvironment where 
+(subTurfEnvironment.year = new_TurfCommunity.year) AND (subTurfEnvironment.turfID = 
+new_TurfCommunity.turfID) AND ( (subTurfEnvironment.bad)='')) AS notbad, sites.Temperature_level, 
+sites.Precipitation_level, sites.SummerTemperature_gridded, sites.Annualprecipitation_gridded, 
+new_TurfCommunity.Year, new_TurfCommunity.species, new_TurfCommunity.cover, turfEnvironment.recorder, 
+dest_blocks.siteID as destSiteID FROM (((blocks AS dest_blocks INNER JOIN plots AS dest_plots ON 
+dest_blocks.blockID = dest_plots.blockID) INNER JOIN (((sites INNER JOIN blocks ON sites.siteID = 
+blocks.siteID) INNER JOIN plots ON blocks.blockID = plots.blockID) INNER JOIN turfs ON plots.plotID 
+= turfs.originPlotID) ON dest_plots.plotID = turfs.destinationPlotID) INNER JOIN new_TurfCommunity 
+ON turfs.turfID = new_TurfCommunity.turfID) INNER JOIN turfEnvironment ON (turfEnvironment.year = 
+new_TurfCommunity.Year) AND (turfs.turfID = turfEnvironment.turfID) WHERE NOT turfs.TTtreat='' AND 
+((Not (new_TurfCommunity.Year)=2010));"
 
 cover.thin <- sqlQuery(con, coverQ)
                                        
 #correct for stomping
-stompingQ <- "SELECT blocks.siteID, blocks.blockID, turfs.turfID, subTurfEnvironment.year, turfs.TTtreat, Count(subTurfEnvironment.bad) AS CountOfbad
-FROM blocks INNER JOIN (plots INNER JOIN (turfs INNER JOIN subTurfEnvironment ON turfs.turfID = subTurfEnvironment.turfID) ON plots.plotID = turfs.destinationPlotID) ON blocks.blockID = plots.blockID
-GROUP BY blocks.siteID, blocks.blockID, turfs.turfID, subTurfEnvironment.year, turfs.TTtreat, subTurfEnvironment.bad
-HAVING (((subTurfEnvironment.bad)='x'));"
+stompingQ <- "SELECT blocks.siteID, blocks.blockID, turfs.turfID, subTurfEnvironment.year, 
+turfs.TTtreat, Count(subTurfEnvironment.bad) AS CountOfbad FROM blocks INNER JOIN (plots INNER JOIN 
+(turfs INNER JOIN subTurfEnvironment ON turfs.turfID = subTurfEnvironment.turfID) ON plots.plotID = 
+turfs.destinationPlotID) ON blocks.blockID = plots.blockID GROUP BY blocks.siteID, blocks.blockID, 
+turfs.turfID, subTurfEnvironment.year, turfs.TTtreat, subTurfEnvironment.bad HAVING 
+(((subTurfEnvironment.bad)='x'));"
 
 #delete turfs with too much stomping  
 cover.thin <- cover.thin[cover.thin$notbad > 10, ]
@@ -241,8 +250,8 @@ cover <- cover[cover.meta$turfID %in% tmp$turfID, ] #apply the same filters to c
 cover.meta <- tmp
 
 # Load subplot data
-subturf <- "SELECT newSubTurfCommunity.turfID, newSubTurfCommunity.subTurf, newSubTurfCommunity.Year, newSubTurfCommunity.species
-FROM newSubTurfCommunity;"
+subturf <- "SELECT newSubTurfCommunity.turfID, newSubTurfCommunity.subTurf, 
+newSubTurfCommunity.Year, newSubTurfCommunity.species FROM newSubTurfCommunity;"
 subturf <- sqlQuery(con, subturf)
 subturf <- subset(subturf, turfID%in%cover.meta$turfID & Year != 2010)
 subturf$subturfID <- with(subturf, paste(turfID, subTurf, sep = '_'))
@@ -296,18 +305,19 @@ odbcCloseAll()
 cover.all <- cover[, !names(cover) %in% c('NID.gram', 'NID.herb', 'NID.rosett', 'NID.seedling')]
 trait.data.all <- trait.data[trait.data$speciescode %in% names(cover.all), ]
 
-trait.data <- filter(trait.data, !speciescode %in% c('Caru.car', 'Pic.abi', 'Bet.pub', 'Jun.com')) %>% # no trees/shrubs
-              filter(!speciescode %in% c('Car.sp', 'Dry.sp', 'Hie.sp', 'Sal.sp', 'Ver.sp', 'Tar.sp')) 
-                      # no 'sp' ambiguities when other species in that genus are present
+# no trees/shrubs, no 'sp' ambiguities when other species in that genus are present
+trait.data <- filter(trait.data, 
+  !speciescode %in% c('Caru.car', 'Pic.abi', 'Bet.pub', 'Jun.com')) %>% 
+              filter(
+  !speciescode %in% c('Car.sp', 'Dry.sp', 'Hie.sp', 'Sal.sp', 'Ver.sp', 'Tar.sp'))
 
-# Fill in some missing data with good guesses
+# Fill in missing data with good guesses (this might be negated later, as all 'Alc.alp' -> 'Alc.sp')
 trait.data <- within(trait.data, {
   seed.mass[speciescode == 'Alc.sp'] <- seed.mass[speciescode == 'Alc.alp']
   max.height[speciescode == 'Alc.sp'] <- max.height[speciescode == 'Alc.alp']
 })
 
-
-# Remove anything without trait data
+# Remove entries without trait data
 cover <- cover.all[, names(cover.all) %in% trait.data$speciescode] # gets rid of UIDs
 subturf <- subturf[, colnames(subturf) %in% trait.data$speciescode]
 trait.data <- trait.data[trait.data$speciescode %in% names(cover), ]
@@ -315,7 +325,7 @@ trait.data <- trait.data[trait.data$speciescode %in% names(cover), ]
 # Ensure presence/absence data is represented by a '1' or '0'
 subturf = apply(subturf, 2, function(x) ifelse(x > 0, 1, 0))
 
-#verify again
+#verify again, write
 all(with(cover.meta, paste(turfID, Year, sep = '_')) == rownames(cover))
 all(with(subturf.meta, paste(turfID, subTurf, Year, sep = '_')) == row.names(subturf))
 
@@ -326,9 +336,3 @@ write.csv(trait.data, row.names = FALSE, file = 'traitdataFull.csv')
 write.csv(trait.data.all, row.names = FALSE, file = 'traitdataFull_all.csv')
 write.csv(subturf, file = 'subturf.csv')  
 write.csv(subturf.meta, row.names = FALSE, file = 'subturfmeta.csv')
-
-# -----------------------------------------------------------------------------
-# For some trait x clonal trait comparisons see 'some_trait_comparisons.R' in 
-# the 'scripts' folder
-# -----------------------------------------------------------------------------
-
