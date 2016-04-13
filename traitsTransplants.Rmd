@@ -7,49 +7,59 @@ output: html_document
 ### Set working directory, load packages, create naming lists, load data
 
 ```{r}
-wd0 <- getwd()
+
+# This R markdown file draws code from several other files
+# 1) custom_functions.R:                My own custom functions
+# 2) trait_data_processing.R:           Process and compile trait data for appropriate spp
+# 3) bayesian_immigration_estimates.R:  Estimate immigration rates at each site
+# 4) neutral_simulation.R:              The neutral simulation (based on set parameters)
+# 5) simdat_processing_veg.R:           Determine Bray-Curtis distances between simulated turfs
+# 6) simdat_processing_traits.R:        Determine trait-based distances between simulated turfs
+# 7) simdat_spp.R:                      Determine species-specific deviations from neutral predictions
+
 wd <- 'C:\\Users\\John\\Google Drive\\Documents\\michigan\\seedclim'
 setwd(wd)
 
-# load custom functions
+# load custom functions. Load MASS before dplyr because it takes over select()
 source('MS_traitsTransplants/custom_functions.R')
-loadpax(pkg = c('Hmisc', 'ggplot2', 'reshape2', 'dplyr', 'data.table', 'grid', 
-  'vegan', 'knitr', 'gridExtra', 'tidyr'))
+loadpax(pkg = c('Hmisc', 'ggplot2', 'reshape2', 'MASS', 'dplyr', 'data.table', 'grid', 'vegan', 'knitr', 
+  'gridExtra', 'tidyr'))
 
 # Trait names (left) and trait names for parsing for figure labels (right)
-trait.list <- c(veg         = expression('Species'~'Composition'),
-                leaf.area   = expression('Log Leaf Area ('*mm^2*')'), 
-                max.height  = expression('Log Max'~'Height (m)'), 
-                seed.mass   = expression('Log'~'Seed'~'Mass'~'(mg)'), 
-                sla         = expression('Log SLA ('*m^2*kg^-1*')'),
-                buds        = expression('Bud'~'Number'),
-                lat         = expression('Lateral'~'Spread'~'(%)'), 
-                offs        = expression('Offspring'~'(%)'), 
-                conper      = expression('Persistence'~'(%)'))
+traits1 <- c(
+  veg         = expression('Species'~'Composition'),
+  leaf.area   = expression('Log Leaf Area ('*mm^2*')'), 
+  max.height  = expression('Log Max'~'Height (m)'), 
+  seed.mass   = expression('Log'~'Seed'~'Mass'~'(mg)'), 
+  sla         = expression('Log SLA ('*m^2*kg^-1*')'),
+  buds        = expression('Bud'~'Number'),
+  lat         = expression('Lateral'~'Spread'~'(%)'), 
+  offs        = expression('Offspring'~'(%)'), 
+  conper      = expression('Persistence'~'(%)')
+)
 
 # Trait names and full names
-trait.list2 <- c(veg         = 'Species Composition',
-                 leaf.area   = 'Leaf Area', 
-                 max.height  = 'Max. Height', 
-                 seed.mass   = 'Seed Mass', 
-                 sla         = 'SLA',
-                 buds        = 'Bud Number',
-                 lat         = 'Lat. Spread', 
-                 offs        = 'Offspring', 
-                 conper      = 'Persistence')
+traits2 <- c(
+  leaf.area   = 'Leaf Area', 
+  max.height  = 'Max. Height', 
+  seed.mass   = 'Seed Mass', 
+  sla         = 'SLA',
+  buds        = 'Bud Number',
+  lat         = 'Lat. Spread', 
+  offs        = 'Offspring', 
+  conper      = 'Persistence'
+)
 
-# trait list without veg
-trait.list3 <- names(trait.list2)[names(trait.list2) != 'veg']
+# trait list with veg
+traits3 <- c(veg = 'Species Composition', traits2)
 
 # Treatment and environmental variable names
-treats <- c(TTC = 'Control',
-            TT1 = 'Control',
-            TT2 = 'Warmer',
-            TT3 = 'Wetter',
-            TT4 = 'Warmer+Wetter')
+treats <- c(TTC = 'Control', TT1 = 'Control', TT2 = 'Warmer', TT3 = 'Wetter', TT4 = 'Warmer+Wetter')
 
-env.vars <- c('SummerTemperature_gridded'   = expression('Summer Temperature ('*degree*'C)'),
-              'Annualprecipitation_gridded' = expression('Annual'~'Precipitation (mm)')) 
+env.vars <- c(
+  'SummerTemperature_gridded'   = expression('Summer Temperature ('*degree*'C)'),
+  'Annualprecipitation_gridded' = expression('Annual'~'Precipitation (mm)')
+) 
 
 #---------------------------------------------------------------------------------------------------
 
@@ -58,14 +68,16 @@ env.vars <- c('SummerTemperature_gridded'   = expression('Summer Temperature ('*
 
 #---------------------------------------------------------------------------------------------------
 
+# Load cover data, trait data, climate data
 cover <- as.matrix(read.csv(row.names = 1, file = 'data\\cover.csv'))
 cover.meta <- read.csv(file = 'data\\covermeta.csv')
-trait.data.full <- read.csv(file = 'data\\traitdataFull.csv', stringsAsFactors = FALSE)
-trait.data <- select(trait.data.full, species = speciescode, leaf.area, max.height, seed.mass, 
-  sla, conper, offs, lat, buds)
+trait.data.full <- read.csv(file = 'data\\traitdata.csv', stringsAsFactors = FALSE)
+trait.data <- trait.data.full %>%
+  select(speciescode, leaf.area, max.height, seed.mass, sla, conper, offs, lat, buds) %>%
+  rename(species = speciescode)
+clim.years <- read.csv('data\\clim_years.csv')
+clim.transplants <- read.csv(file = 'data\\clim_transplants.csv')
 
-# avoid warning
-setwd(wd0)
 ```
 
 ### Calculate CWMs, distances, turnover rates, immigration rates
@@ -74,14 +86,14 @@ setwd(wd0)
 
 # CWMS
 cwms <- data.frame(row.names = row.names(cover))
-for (trait in trait.list3) {
-    cwms[, trait] = apply(cover, 1, cwm, trait = trait)
+for (trait in names(traits2)) {
+  cwms[, trait] = apply(cover, 1, cwm, trait = trait)
 }
 
 # A list of distance matrices
 dists <- list()
-for (trait in names(trait.list2)) {
-    dists[[trait]] = dist.fun(cover, trait)
+for (trait in names(traits3)) {
+  dists[[trait]] = dist.fun(cover, trait)
 }
 
 # Compare turf compositions to local controls, convert to data frame
@@ -91,90 +103,84 @@ for (trait in names(dists)) {
 }
 comps <- plyr::ldply(comps, .id = 'trait')
 
-# -------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------
 
 # Calculate mean turnover rates in control turfs, by site. Control turfs only.
 rates <- cbind(cover.meta[, c('turfID', 'Year', 'siteID')], cover)
 rates <- rates[cover.meta$TTtreat %in% c('TTC', 'TT1'), ]
 
-# Notes -- i divide by 2 because there are 
+# Notes -- divide by 2 because there are 
 #  (1) 3 years of data and 
-#  (2) because every increase is (likely) countered by a decrease
-rates <- melt(rates, 
-           id.vars = c('siteID', 'turfID', 'Year'), 
-           variable.name = 'species', value.name = 'abun') %>%
-         group_by(siteID, turfID, species) %>%
-         summarise(turnover = abs(abun[Year == 2009] - abun[Year == 2011]) / 2 +
-                              abs(abun[Year == 2011] - abun[Year == 2012]) + 
-                              abs(abun[Year == 2012] - abun[Year == 2013])) %>%
-         select(-species) %>% 
-         group_by(siteID, turfID) %>%
-         summarise(turnover = sum(turnover) / 3 / 2) %>%
-         select(-turfID) %>%
-         group_by(siteID) %>%
-         summarise(turnover = mean(turnover))
+#  (2) because every increase is presumably countered by a decrease
+rates <- rates %>%
+  melt(
+    id.vars = c('siteID', 'turfID', 'Year'), 
+    variable.name = 'species', value.name = 'abun') %>%
+  group_by(siteID, turfID, species) %>%
+  summarise(turnover = abs(abun[Year == 2009] - abun[Year == 2011]) / 2 + 
+                       abs(abun[Year == 2011] - abun[Year == 2012]) + 
+                       abs(abun[Year == 2012] - abun[Year == 2013])) %>%
+  select(-species) %>% 
+  group_by(siteID, turfID) %>%
+  summarise(turnover = sum(turnover) / 3 / 2) %>%
+  select(-turfID) %>%
+  group_by(siteID) %>%
+  summarise(turnover = mean(turnover))
 
-# ---------------------------------------------------------------------------------------------
-# Estimate immigration using bayesian / JAGS 
-# source("bayesian_immigration_estimates.R")
-
-# combine turnover and immigration rates
+# reset working directory for markdown...
 setwd(wd)
+
+# --------------------------------------------------------------------------------------------------
+
+# Estimate immigration using bayesian / JAGS 
+# source("MS_TraitsTransplants\\bayesian_immigration_estimates.R")
+
+# --------------------------------------------------------------------------------------------------
+
+# load and combine turnover and immigration rates
 m.bayes <- read.csv("data\\m.bayes.csv")
 
-pars.bayes <- transmute(rates, site = siteID, 
-                               d = round(turnover), 
-                               m = signif(m.bayes$m[match(m.bayes$site, rates$siteID)], 3))
+pars <- rates %>%
+  transmute(
+    site = siteID, 
+    d = round(turnover), 
+    m = signif(m.bayes$m[match(m.bayes$site, rates$siteID)], 3))
 
+# --------------------------------------------------------------------------------------------------
 
-# ------------------------------------------------------------
+# Run simulations? Edit script to change parameters 
+# e.g. to those in pars, or the general survey
+# source("MS_TraitsTransplants\\neutral_simulation.R")
 
-# Do you want to run simulations? Edit script to change parameters (e.g. to those in pars.bayes)
-# source("neutral_simulation.R")
+# --------------------------------------------------------------------------------------------------
 
-# Do you want to process vegetation distances of simulation data
-# source("simdat_processing_veg.R")
+# Process vegetation distances of simulation data?
+# source("MS_TraitsTransplants\\simdat_processing_veg.R")
 
-# Otherwise, load previously calculated data:
+# --------------------------------------------------------------------------------------------------
+
+# load sumulation data from a parameter survey
 load("data\\simSummary_survey_veg.rda")
 
-# load simulations run using measured turnover rates (d) and bayesian immigration rate estimates (m)
-simdat.bayes.veg <- fread("data\\simSummary_bayes_veg.csv")
+# --------------------------------------------------------------------------------------------------
 
-# load simulations run using measured turnover rates (d) and a broad survey of immigration rates (m)
-simdat.max.veg <- fread("data\\simSummary_max_veg.csv")
-
-# Given this range, determine which m values lead to lowest deviation from observed rates of change
-pars.max <- as.data.frame(simdat.max.veg) %>%
-            filter(trait == 'veg') %>%
-            mutate(site = cover.meta$siteID[match(turfID, cover.meta$turfID)],
-                   field.mean = comps$dist.tt1[match(paste(trait, turfID, year), 
-                                paste(comps$trait, comps$turfID, comps$year))]) %>%
-            group_by(d, m, site) %>%
-            summarise(res = mean(abs(dist.tt1 - field.mean))) %>%
-            filter(paste(site, d) %in% paste(rates$siteID, round(rates$turnover))) %>%
-            group_by(site) %>%
-            filter(m == m[which.min(res)]) %>%
-            select(-res) %>%
-            arrange(site)
-
-# ------------------------------------------------------------
-
-# Want to process trait distances of simulation data?
-# First with bayesian parameters
-# pars.method <- 'bayes'
+# Process trait distances of simulations?
 # source("simdat_processing_traits.R")
-# If not, just load previously processed simulation data
+
+# --------------------------------------------------------------------------------------------------
+
+# load simulation data
 simdat.bayes <- read.csv('data\\simSummary_bayes_traits.csv', stringsAsFactors = FALSE)
 
-# Then using maximimum immigration rates
-# pars.method <- 'max'
-# source("simdat_processing_traits.R")
-# If not, just load previously processed simulation data
-simdat.max <- read.csv('data\\simSummary_max_traits.csv', stringsAsFactors = FALSE)
+# --------------------------------------------------------------------------------------------------
 
-# avoid warning
-setwd(wd0)
+# Calculate deviations from neutral model by species * turf
+# source('simdat_spp.R')
+
+# --------------------------------------------------------------------------------------------------
+
+# load deviations for single species * turf observations
+load('data\\simdat_spp.rda')
 
 ```
 
@@ -198,28 +204,32 @@ x <- with(cover.meta,
 )
 
 # summarise and calculate summary statistics
-x <- melt(x, id.vars = c('site', 'temp', 'precip', 'temp.level', 'precip.level'), 
-             variable.name = 'trait', value.name = 'cwm') %>%
-     group_by(trait, site, temp, precip, temp.level, precip.level) %>%
-     summarise(len = length(temp),
-               sd = sd(cwm),
-               lower = quantile(cwm, 0.05),
-               upper = quantile(cwm, 0.95),
-               cwm = mean(cwm))
+x <- x %>%
+  melt(
+    id.vars = c('site', 'temp', 'precip', 'temp.level', 'precip.level'), 
+    variable.name = 'trait', 
+    value.name = 'cwm') %>%
+  group_by(trait, site, temp, precip, temp.level, precip.level) %>%
+  summarise(
+    len = length(temp),
+    sd = sd(cwm),
+    lower = quantile(cwm, 0.05),
+    upper = quantile(cwm, 0.95),
+    cwm = mean(cwm))
 
 # multiple scaled temp and precip values to serve as an interaction variable predictor in the lm
-tmp <- select(ungroup(x), trait, cwm, temp, precip) %>%
-       mutate(int = scale(temp, center = T, scale = F) * scale(precip, center = T, scale = F))
+tmp <- ungroup(x) %>%
+  select(trait, cwm, temp, precip) %>%
+  mutate(int = scale(temp, center = T, scale = F) * scale(precip, center = T, scale = F))
 
 # make a list of models, with predictors in stepwise weighted regression determined by stepwise AIC
 mods <- list()
 for (i in unique(x$trait)) {
   tmp2 <- tmp[tmp$trait == i, names(tmp) != 'trait']
-  mods[[i]] <- MASS::stepAIC(lm(cwm ~ ., data = tmp2, weight = x$len[x$trait == i]), trace = FALSE)
+  mods[[i]] <- stepAIC(lm(cwm ~ ., data = tmp2, weight = x$len[x$trait == i]), trace = FALSE)
 }
 
-# connection persistence and bud number clearly show non-linear relationships to temperature.
-# fit a more appropriate curve, with a diminishing shape
+# fit more appropriate curves to connection persistence and bud number
 for (i in c('conper', 'buds')) {
   mods[[i]] <- lm(cwm ~ exp(-temp), weight = x$len[x$trait == i], data = tmp[tmp$trait == i, ])
 }
@@ -228,9 +238,9 @@ for (i in c('conper', 'buds')) {
 options(scipen = 20)
 tats <- plyr::ldply(mods, function(x) data.frame(
   variable = row.names(coef(summary(x))), coef(summary(x))))
-tats <- select(tats, trait = .id, variable, Estimate, SE = `Std..Error`, 
-          t.value, p.value = `Pr...t..`) %>%
-        filter(variable != '(Intercept)')
+tats <- tats %>%
+  select(trait = .id, variable, Estimate, SE = `Std..Error`, t.value, p.value = `Pr...t..`) %>%
+  filter(variable != '(Intercept)')
 tats.full <- tats
 tats <- filter(tats, p.value < 0.05)
 
@@ -238,31 +248,36 @@ tats <- filter(tats, p.value < 0.05)
 shortlist <- c('veg', as.character(unique(tats$trait)))
  
 # Filter df for significant relationships, reformat, cleanup
-x <- filter(as.data.frame(x), trait %in% tats$trait)
-x <- gather(x, variable, value, temp, precip)
-x$trait.label <- factor(trait.list[match(x$trait, names(trait.list))], levels = trait.list)
-x$variable.label <- as.character(ifelse(x$variable == 'temp', env.vars[1], env.vars[2]))
-tats$variable.label <- ifelse(tats$variable == 'temp', 
-  as.character(env.vars[1]), paste0(as.character(env.vars[2])))
+x <- x %>%
+  filter(trait %in% tats$trait) %>%
+  gather(variable, value, temp, precip) %>%
+  mutate(
+    trait.label = factor(traits1[match(trait, names(traits1))], levels = traits1),
+    variable.label = as.character(ifelse(variable == 'temp', env.vars[1], env.vars[2])))
+
+tats$variable.label <- ifelse(tats$variable == 'temp', as.character(env.vars[1]), 
+  paste0(as.character(env.vars[2])))
 
 # Plot
-fig2 <- ggplot(x, aes(x = value, y = cwm, weight = len, group = 1,
- fill = factor(precip.level), shape = factor(temp.level))) +
-geom_point() +
-scale_shape_manual(values = c(24,21,25)) +
-scale_fill_manual(values = c("#FFFFFF", "#C6CBCC", "#8A8587", "#000000")) +
-geom_pointrange(aes(ymin = cwm - sd, ymax = cwm + sd)) +
-facet_grid(trait.label ~ variable.label, scales = 'free', labeller = label_parsed) + 
-stat_smooth(method = 'lm', formula = y ~ exp(-x), se = FALSE, color = 'black',
-  data = filter(x, trait  %in% c('conper', 'buds') & variable == 'temp')) +
-stat_smooth(method = 'lm', se = FALSE, color = 'black',
-  data = filter(x, paste(trait, variable) %in% paste(tats$trait, tats$variable)[tats$trait != 'conper'])) + 
-xlab('') +
-ylab('') +
-theme_bw() +
-theme(legend.position  = 'none', 
-      panel.grid.minor = element_blank(),
-      panel.grid.major = element_blank())
+fig2 <- ggplot(x, aes(x = value, y = cwm, weight = len, group = 1, fill = factor(precip.level), 
+    shape = factor(temp.level))) +
+  geom_point() +
+  scale_shape_manual(values = c(24,21,25)) +
+  scale_fill_manual(values = c("#FFFFFF", "#C6CBCC", "#8A8587", "#000000")) +
+  geom_pointrange(aes(ymin = cwm - sd, ymax = cwm + sd)) +
+  facet_grid(trait.label ~ variable.label, scales = 'free', labeller = label_parsed) + 
+  stat_smooth(method = 'lm', formula = y ~ exp(-x), se = FALSE, color = 'black',
+    data = filter(x, trait  %in% c('conper', 'buds') & variable == 'temp')) +
+  stat_smooth(method = 'lm', se = FALSE, color = 'black', 
+    data = filter(x, paste(trait, variable) %in% 
+      paste(tats$trait, tats$variable)[tats$trait != 'conper'])) + 
+  labs(x = '', y = '') +
+  theme_bw() +
+  theme(
+    legend.position  = 'none', 
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank())
+
 fig2
 
 ```
@@ -273,16 +288,14 @@ fig2
 
 # Table 1
 
-tmp <- rename(tats.full, "Trait"       = trait,
-                         "t-statistic" = t.value,
-                         "p-value"     = p.value,
-                         "Trait"       = trait,
-                         "Variable"    = variable) %>%
-       mutate(Trait    = trait.list2[match(Trait, names(trait.list2))],
-              Variable = c('Temp', 'Precip', 'exp(-Temp)', 'Temp x Precip'
-                )[match(Variable, c('temp', 'precip', 'exp(-temp)', 'int'))],
-              variable.label = NULL) %>%
-       arrange(Trait)
+tmp <- tats.full %>%
+  rename("Trait" = trait, "t-statistic" = t.value, "p-value" = p.value, "Trait" = trait, 
+    "Variable" = variable) %>%
+  mutate(
+    Trait = traits3[match(Trait, names(traits3))],
+    Variable = c('Temp', 'Precip', 'exp(-Temp)', 'Temp x Precip')[match(Variable, c('temp', 'precip', 'exp(-temp)', 'int'))],
+    variable.label = NULL) %>%
+  arrange(Trait)
 
 tmp[, 3:5] <- apply(tmp[, 3:5], 2, function(x) format(round(as.numeric(x), 2), nsmall = 2))
 tmp$"p-value" <- ifelse(tmp$"p-value" > 0.05, 'NS', ifelse(tmp$"p-value" < 0.001, '< 0.001', format(round(tmp$"p-value", 3), 3)))
@@ -300,36 +313,41 @@ kable(tmp, align = 'r')
 
 # Figure 3
 
-x <- filter(comps, year %in% c(2009, 2013) & 
-                   turfID %in% cover.meta$turfID[cover.meta$TTtreat != 'TT3'] &
-                   trait %in% shortlist) %>%
-     mutate(trait       = factor(trait.list2[match(trait, names(trait.list2))], trait.list2),
-            treat       = cover.meta$TTtreat[match(turfID, cover.meta$turfID)],
-            treat       = factor(treats[match(treat, names(treats))], unique(treats)),
-            treat.group = factor(ifelse(treat == 'Control', 'Control', 'Transplant')))
+x <- comps %>%
+  filter(
+    year %in% c(2009, 2013) & 
+    turfID %in% cover.meta$turfID[cover.meta$TTtreat != 'TT3'] &
+    trait %in% shortlist) %>%
+  mutate(
+    trait = factor(traits3[match(trait, names(traits3))], traits3),
+    treat = cover.meta$TTtreat[match(turfID, cover.meta$turfID)],
+    treat = factor(treats[match(treat, names(treats))], unique(treats)),
+    treat.group = factor(ifelse(treat == 'Control', 'Control', 'Transplant')))
+
 x <- dcast(x, trait + treat.group + turfID + treat ~ paste0('dist', year), value.var = 'dist.tt1')
 
-#determine dashed barrier
-vlines <- filter(x, treat.group == 'Control') %>%
-            group_by(trait) %>%
-            summarise(vline = quantile(dist2009, 0.5))
+# determine dashed barrier
+vlines <- x %>%
+  filter(treat.group == 'Control') %>%
+  group_by(trait) %>%
+  summarise(vline = quantile(dist2009, 0.5))
 
 # Plot
-fig3 <- ggplot(x, aes(x = dist2009, y = dist2013 - dist2009, 
-  color = treat.group, shape = treat.group)) + 
-theme_bw() +
-scale_color_manual(values = c('slategrey', 'black'), name = '') +
-scale_shape_manual(values=c(3,16), name='') +
-theme(panel.grid.minor = element_blank(), 
-      panel.grid.major = element_blank(), 
-      legend.key       = element_blank()) +
-geom_point(size = 1.5, data = subset(x, treat.group == 'Control')) +
-geom_point(size = 1.5, data = subset(x, treat.group != 'Control')) +
-facet_wrap(~ trait, ncol = 2, scales = 'free') +
-geom_vline(aes(xintercept = vline), vlines, lty = 2) +
-geom_hline(yintercept = 0) +
-labs(x = 'Initial Dissimilarity 2009', y = 'Change in Dissimilarity 2009 - 2013') +
-stat_ellipse(data = subset(x, treat.group == 'Control'), show.legend = FALSE)
+fig3 <- ggplot(x, aes(x = dist2009, y = dist2013 - dist2009, color = treat.group, shape = treat.group)) + 
+  theme_bw() +
+  scale_color_manual(values = c('slategrey', 'black'), name = '') +
+  scale_shape_manual(values=c(3,16), name='') +
+  theme(
+    panel.grid.minor = element_blank(), 
+    panel.grid.major = element_blank(), 
+    legend.key       = element_blank()) +
+  geom_point(size = 1.5, data = subset(x, treat.group == 'Control')) +
+  geom_point(size = 1.5, data = subset(x, treat.group != 'Control')) +
+  facet_wrap(~ trait, ncol = 2, scales = 'free') +
+  geom_vline(aes(xintercept = vline), vlines, lty = 2) +
+  geom_hline(yintercept = 0) +
+  labs(x = 'Initial Dissimilarity to Controls 2009', y = 'Change in Dissimilarity to Controls 2013') +
+  stat_ellipse(data = subset(x, treat.group == 'Control'), show.legend = FALSE)
 
 fig3
 
@@ -344,58 +362,58 @@ fig3
 # Combine observed and simulated data sets
 x <- rbind(simdat.bayes, mutate(comps, m = 'field', d = 'field'))
 
-# select traits
-x <- filter(x, trait %in% shortlist)
-
-# cleanup
-x <- mutate(x, 
-       treat = cover.meta$TTtreat[match(turfID, cover.meta$turfID)],
-       treat = factor(treats[match(treat, names(treats))], unique(treats)),
-       year = as.numeric(year) - 2009,
-       m.group = factor(ifelse(m == 'field', 'Observed', 'Simulated')))
+# select traits and cleanup
+x <- x %>%
+  filter(trait %in% shortlist) %>%
+  mutate(
+    treat = cover.meta$TTtreat[match(turfID, cover.meta$turfID)],
+    treat = factor(treats[match(treat, names(treats))], unique(treats)),
+    year = as.numeric(year) - 2009,
+    m.group = factor(ifelse(m == 'field', 'Observed', 'Simulated')))
 
 # remove wetter-transplants and group everything into warmer category
 x <- filter(x, treat != 'Wetter') %>%
      mutate(treat = factor(ifelse(treat == 'Control', 'Control', 'Warmer'), c('Control', 'Warmer')))  
 
 # Run t.tests to determine if observed turfs significantly differant than simulated
-stats <- filter(x, treat != 'Control') %>%
+stats <- x %>%
+  filter(treat != 'Control') %>%
   group_by(trait, year, treat) %>%
   do(mod  = t.test(dist.tt1 ~ m.group, data = .)) %>%
-  mutate(p       = mod$p.value,
-         m.group = 'Observed',
-         mod     = NULL)
+  mutate(p = mod$p.value, m.group = 'Observed', mod = NULL)
 
 # Manually specify maximum y values for plotting significance symbols
-sigtraits <- c('max.height', 'buds', 'conper')
+sigtraits <- unique(filter(stats, p < 0.05)$trait)
 stats$y <- NA
-stats$y <- c(0.15, 0.45, 0.225)[match(stats$trait, sigtraits)]
+stats$y <- c(0.45, 0.225, 0.15, 0.75)[match(stats$trait, sigtraits)]
 
-# Remove control column, replace with horizontal lines which represent controls anyway
-x <- mutate(x, m.group = ifelse(treat == 'Control', 'Control', as.character(m.group)),
-               treat = 'Warmer')
+# Remove control column, replace with horizontal lines which represent controls anyway, fix labels
+x <- x %>%
+  mutate(
+    m.group = ifelse(treat == 'Control', 'Control', as.character(m.group)),
+    treat = 'Warmer')
 
-# Fix trait labels
-x$trait <- factor(trait.list2[match(x$trait, names(trait.list2))], levels = trait.list2)
-stats$trait <- factor(trait.list2[match(stats$trait, names(trait.list2))], levels = trait.list2)
+# Fix labels
+x$trait <- factor(traits3[match(x$trait, names(traits3))], levels = traits3)
+stats$trait <- factor(traits3[match(stats$trait, names(traits3))], levels = traits3)
 
 fig4 <- ggplot(x, aes(x = year, y = dist.tt1, lty = m.group)) +
-stat_sum_df('mean_cl_normal', geom = 'errorbar') +
-stat_sum_single(mean, geom = 'line', size = 0.3) +
-facet_wrap(~ trait, scales = 'free_y', ncol = 2) + #labeller = label_parsed
-theme_bw() +
-theme(panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(), 
-      legend.key       = element_blank()) +
-labs(x = 'Years after transplantation', 
-     y = 'Dissimilarity to local controls') +
-scale_linetype_manual(values = c(3,1,2), name = '') +
-scale_y_continuous(labels = fmt())
+  stat_sum_df('mean_cl_normal', geom = 'errorbar', size = 0.3) +
+  stat_sum_single(mean, geom = 'line', size = 0.3) +
+  facet_wrap(~ trait, scales = 'free_y', ncol = 2) +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(), 
+    legend.key = element_blank()) +
+  labs(x = 'Years after transplantation', 
+       y = 'Dissimilarity to local controls') +
+  scale_linetype_manual(values = c(3,1,2), name = '') +
+  scale_y_continuous(labels = fmt())
 
-tmp <- subset(stats, p < 0.05 & trait != 'Leaf Area')
+tmp <- subset(stats, p < 0.05)
 if (nrow(tmp) > 0) {
-    fig4 <- fig4 + geom_text(aes(x = year, y = y, lty = NA), data = tmp, 
-      color = 'black', label = '*')
+  fig4 <- fig4 + geom_text(aes(x = year, y = y, lty = NA), data = tmp, color = 'black', label = '*')
 }
 
 fig4
@@ -407,36 +425,35 @@ fig4
 ```{r}
 
 ## Table S1
-x <- trait.data[, trait.list3]
+x <- trait.data[, names(traits2)]
 
 # calculate N
 apply(x, 2, function(x) length(x[!is.na(x)]))
 
-names(x) <- trait.list2[match(names(x), names(trait.list2))]
+names(x) <- traits3[match(names(x), names(traits3))]
 x <- cor(x, use = 'complete.obs')
 tmp <- format(round(x, 2), nsmall = 2)
 for (i in 1:ncol(tmp)) tmp[i:nrow(tmp), i] <- ''
 tmp <- tmp[-nrow(tmp), -1]
-kable(tmp, align = 'r', caption = 'Pearson correlations among traits')
+kable(tmp, align = 'r')
 
 ```
 
-#### **Table S1.1** Pearson correlations in species trait values. Bold indicates significance. N ranges from 140 - 152.
+#### **Table S1** Pearson correlations in species trait values. N ranges from 140 - 152.
 
 ```{r}
 
 # p values
-
-tmp <- rcorr(x, type = 'pearson')$P
-tmp <- format(round(tmp, 3), nsmall = 2)
-for (i in 1:ncol(tmp)) tmp[i:nrow(tmp), i] <- ''
-tmp <- tmp[-nrow(tmp), -1]
-
-kable(tmp, align = 'r', caption = 'p-values for trait correlations')
+tmp <- rcorr(x)$P %>%
+  melt() %>%
+  filter(value < 0.05) %>%
+  rename(trait1 = Var1, trait2 = Var2, p = value)
+tmp <- tmp[match(unique(tmp$p), tmp$p), ]
+mutate(tmp, p = signif(p, 2))
 
 ```
 
-#### **Table S1.2** Significance values for Pearson correlations in species trait values. Bold indicates significance. N ranges from 140 - 152.
+Significant (p < 0.05) Pearson correlations in species trait values.
 
 ```{r}
 
@@ -446,159 +463,174 @@ x <- cwms[cover.meta$Year == 2009, ]
 # calculate N
 apply(x, 2, function(x) length(x[!is.na(x)]))
 
-names(x) <- trait.list2[match(names(x), names(trait.list2))]
+names(x) <- traits3[match(names(x), names(traits3))]
 x <- cor(x)
 tmp <- format(round(x, 2), 2)
 for (i in 1:ncol(tmp)) { tmp[i:nrow(tmp), i] <- '' }
 tmp <- tmp[-nrow(tmp), -1]
 
-kable(tmp, align = 'r', caption = 'Pearson correlations among CWMs')
+kable(tmp, align = 'r')
 
 ```
 
-#### **Table S2.1** Pearson correlations in community weighted means. N = 232.
+#### **Table S2** Pearson correlations in community weighted means. N = 232.
 
 ```{r}
 
 # p values
-
-tmp <- rcorr(x, type = 'spearman')$P
-tmp <- format(round(tmp, 3), nsmall = 2)
-for (i in 1:ncol(tmp)) tmp[i:nrow(tmp), i] <- ''
-tmp <- tmp[-nrow(tmp), -1]
-
-kable(tmp, align = 'r', caption = 'p-values for CWM correlations')
+tmp <- rcorr(x, type = 'pearson')$P %>%
+  melt() %>%
+  filter(value < 0.05) %>%
+  rename(trait1 = Var1, trait2 = Var2, pval = value)
+tmp <- tmp[match(unique(tmp$pval), tmp$pval), ]
+mutate(tmp, pval = signif(pval, 2))
 
 ```
 
-#### **Table S2.2** Significance values for Pearson correlations in community weighted means. N = 232.
+Significant (p < 0.05) Pearson correlations in community weighted means.
 
 ```{r}
 
-# Table S3
+# Table S3 
 tmp <- filter(cover.meta, TTtreat == 'TTC')
 
-pars.table <- 
-  mutate(pars.max,
-    m.fit   = as.numeric(m),                   
-    m.bayes = pars.bayes$m[match(site, pars.bayes$site)],
+pars.table <- pars %>%
+  mutate(
+    m       = as.numeric(substr(as.character(signif(pars$m[match(site, pars$site)], 3)), 1, 4)),
     temp    = round(tmp$SummerTemperature_gridded[match(site, tmp$siteID)], 2),
     precip  = round(tmp$Annualprecipitation_gridded[match(site, tmp$siteID)], 0),
     ordr    = as.integer(paste0(tmp$Temperature_level, tmp$Precipitation_level)[match(site, tmp$siteID)])) %>%
   ungroup() %>%
   arrange(ordr) %>%
-  select("Site" = site, 'Summer Temperature (C)' = temp, 'Annual Precipitation (mm)' = precip, d, m.fit, m.bayes)
+  select("Site" = site, 'Summer Temperature (C)' = temp, 'Annual Precipitation (mm)' = precip, d, m)
 kable(pars.table, align = 'r')
 
 ```
 
-#### **Table S3.** Site-level simulation parameters, sorted by temperature level (~6.0, ~9.0, ~10.5C) then precipitation level (~600, ~1200, ~1900, ~2800mm/yr). Summer temperature is the mean of the four warmest months. Replacement rate (d) was estimated based on observed changes in cover between years. Immigration rate (m) was estimated using two methods: mfit was selected to maximize closeness of fit with observed rates of species-based change, and mbayes was derived using a Bayesian approach to estimating immigration in control turfs assuming they exhibited trait-neutral dynamics. Parameter estimates are shown graphically in the top right panel of Figure S2. 
+#### **Table S3.** Site-level simulation parameters, sorted by temperature level (~6.0, ~9.0, ~10.5 C) then precipitation level (~600, ~1200, ~1900, ~2800 mm/yr). Summer temperature is the mean of the four warmest months. Replacement rate (d) was estimated based on observed changes in cover between years. Immigration rate (m) was estimated using a Bayesian approach to estimating immigration in control turfs assuming they exhibited trait-neutral dynamics. Parameter estimates are shown graphically in the top right panel of Figure S2. 
 
-```{r, fig.width = 7, fig.height = 9}
+```{r, fig.width = 7, fig.height = 3}
 
 # Figure S1
-
-# Combine observed and simulated data sets
-x <- rbind(simdat.max, mutate(comps, m = 'field', d = 'field'))
-
-# select traits
-x <- filter(as.data.frame(x), trait %in% c('veg', shortlist))
-
-# cleanup
-x <- mutate(x, 
-       treat = cover.meta$TTtreat[match(turfID, cover.meta$turfID)],
-       treat = factor(treats[match(treat, names(treats))], unique(treats)),
-       year = as.numeric(year) - 2009,
-       m.group = factor(ifelse(m == 'field', 'Observed', 'Simulated')))
-
-# remove wetter-transplants and group everything into warmer category
-x <- filter(x, treat != 'Wetter') %>%
-     mutate(treat = factor(ifelse(treat == 'Control', 'Control', 'Warmer'), c('Control', 'Warmer')))  
-
-# Run t.tests to determine if observed turfs significantly differant than simulated
-stats <- x %>% 
-  filter(treat != 'Control') %>%
-  group_by(trait, year, treat) %>%
-  do(mod  = t.test(dist.tt1 ~ m.group, data = .)) %>%
-  mutate(p       = mod$p.value,
-         m.group = 'Observed',
-         mod     = NULL)
-
-# Identify maximum y values for plotting significance symbols, append to stats df
-sigtraits <- c('max.height', 'buds', 'conper', 'veg')
-stats$y <- c(0.15, 0.45, 0.225, 0.72)[match(stats$trait, sigtraits)]
-
-# Remove control column, replace with horizontal lines which represent controls anyway
-x <- mutate(x, m.group = ifelse(treat == 'Control', 'Control', as.character(m.group)),
-               treat = 'Warmer')
-
-# Fix trait labels
-x$trait <- factor(trait.list2[match(x$trait, names(trait.list2))], levels = trait.list2)
-stats$trait <- factor(trait.list2[match(stats$trait, names(trait.list2))], levels = trait.list2)
-
-figS1 <- ggplot(x, aes(x = year, y = dist.tt1, lty = m.group)) +
-stat_sum_df('mean_cl_normal', geom = 'errorbar') +
-stat_sum_single(mean, geom = 'line', size = 0.3) +
-facet_wrap(~ trait, scales = 'free_y', ncol = 2) + #labeller = label_parsed
-theme_bw() +
-theme(panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(), 
-      legend.key       = element_blank()) +
-labs(x = 'Years after transplantation', 
-     y = 'Dissimilarity to local controls') +
-scale_linetype_manual(values = c(3,1,2), name = '') +
-scale_y_continuous(labels = fmt())
-
-tmp <- subset(as.data.frame(stats), p < 0.05)
-if (nrow(tmp) > 0) {
-    figS1 <- figS1 + geom_text(aes(x = year, y = y, lty = NA), data = tmp, color = 'black', label = '*')
-}
+figS1 <- ggplot(clim.years, aes(x = year, y = temp, color = tempLevel)) + 
+  stat_sum_df('mean_cl_normal', geom = 'errorbar', size = 0.3) +
+  stat_sum_single(mean, geom = 'line', size = 1) +
+  facet_wrap(~loc) + 
+  scale_color_discrete(name = '') + 
+  labs(x = '', y = "Mean Summer Temperature (C)")
 
 figS1
 
 ```
 
-#### **Figure S1.** Identical to Figure 3 but showing simulations based on the maximum-rate method of estimating immigration rate. Specifically, the model was parameterized such that simulated community change aligned with observed community change in terms of species composition. Parameter values are shown in Table S3. 
+####**Figure S1.** Mean summer temperature values measured over the duration of the experiment at two heights (2m and 30cm). Summer temperatures reflect the mean of the four warmest months, calculated individually by site. Four site values are included in temperature level; error bars reflect 1SD.
 
-```{r, fig.width = 7, fig.height = 5}
+```{r, fig.width = 7, fig.height = 3}
 
 # Figure S2
-
-# Residual heatmap for simulation parameters
-p <- filter(as.data.frame(simdat.survey.veg), trait == 'veg' & year != 2009) %>%
-     mutate(treat = cover.meta$TTtreat[match(turfID, cover.meta$turfID)]) %>%
-     filter(treat != 'TT3') %>%
-     mutate(treat = ifelse(treat %in% c('TTC', 'TT1'), 'Control', 'Warmer'),
-            field.mean = comps$dist.tt1[match(paste(trait, turfID, year), 
-                                              paste(comps$trait, comps$turfID, comps$year))]) %>%
-     group_by(d, m, treat, year) %>%
-     summarise(res = mean(abs(dist.tt1 - field.mean))) %>%
-     filter(as.numeric(d) <= 50)
-
-# Plot
-figS2 <- ggplot(p, aes(x = m, y = d)) +
-geom_tile(aes(fill = res)) +
-stat_contour(aes(z = res), binwidth = 0.02) +
-scale_fill_gradient2(low = 'yellow', mid = 'red', high = 'black', 
-  midpoint = 0.12, name = 'Mean Deviation') +
-facet_grid(year ~ treat) +
-scale_x_continuous(breaks = seq(0,1,.5))+
-labs(x = 'Immigrant probability (m)', y='Replacement rate (d)') +
-geom_point(aes(x = as.numeric(m), y = as.numeric(d)), pch = 1, 
-           data = mutate(pars.max, year = 2011, treat = 'Warmer')) +
-geom_point(aes(x = as.numeric(m), y = as.numeric(d)), pch = 16, 
-           data = mutate(pars.bayes, year = 2011, treat = 'Warmer'))
+figS2 <- ggplot(clim.transplants, aes(x = loc, y = temp, fill = loc)) +
+  geom_boxplot() +
+  facet_grid(~year) +
+  labs(x = '', y = "Temperature Increase (C)") +
+  theme(axis.ticks = element_blank(), 
+        axis.text.x = element_blank()) +
+  scale_fill_discrete(name = "Location")
 
 figS2
 
 ```
 
-#### **Figure S2.** Contoured heat map showing the alignment of model simulations to field data in terms of species composition under a range of replacement rates (d) and immigration rates (m). The heat map depicts the mean difference ("Mean Deviation") in Bray-Curtis dissimilarity of species-level composition between observed field data and 100 simulation reps for each combination of parameters. In the top right panel, circles show the combinations of site-level immigration and replacement rates used in null model simulations, as determined using the Bayesian (solid) and best-fit (hollow) methods of parameter estimation (see Table A3 for specific values).
+####**Figure S2.** A boxplot diagram depicting the mean increase in temperature experienced by turfs transplanted to warmer sites over the duration of the experiment. Measurements occurred at two heights (2m and 30cm). Temperature increase was determined by subtracting the mean temperature of the turf origin from the mean summer temperature each year. Summer temperatures reflect the mean of the four warmest months, calculated individually by site.
 
-### Print PDFs and species trait data .csv
+```{r, fig.width = 8, fig.height = 8}
+
+# Figure S3
+
+# Residual heatmap for simulation parameters
+p <- simdat.survey.veg %>%
+  filter(trait == 'veg' & year != 2009) %>%
+  mutate(treat = cover.meta$TTtreat[match(turfID, cover.meta$turfID)]) %>%
+  filter(treat != 'TT3') %>%
+  mutate(
+    treat = ifelse(treat %in% c('TTC', 'TT1'), 'Control', 'Warmer'),
+    field.mean = comps$dist.tt1[match(paste(trait, turfID, year), 
+      paste(comps$trait, comps$turfID, comps$year))]) %>%
+  group_by(d, m, treat, year) %>%
+  summarise(res = mean(abs(dist.tt1 - field.mean))) %>%
+  filter(as.numeric(d) <= 50)
+
+# Plot
+figS3 <- ggplot(p, aes(x = m, y = d)) +
+  geom_tile(aes(fill = res)) +
+  stat_contour(aes(z = res), binwidth = 0.02, color = 'black') +
+  scale_fill_gradient2(low = 'yellow', mid = 'red', high = 'black', 
+    midpoint = 0.12, name = 'Mean Deviation') +
+  facet_grid(year ~ treat) +
+  scale_x_continuous(breaks = seq(0,1,.5))+
+  labs(x = 'Immigrant probability (m)', y='Replacement rate (d)') +
+  geom_point(aes(x = as.numeric(m), y = as.numeric(d)), pch = 16, 
+             data = mutate(pars, year = 2011, treat = 'Warmer'))
+
+figS3
+
+```
+
+#### **Figure S3.** A contoured heat map showing the alignment of model simulations to field data in terms of species composition under a broad survey of replacement rates (d) and immigration rates (m). The heat map depicts the mean difference ("Mean Deviation") in Bray-Curtis dissimilarity of species-level composition between observed field data and 100 simulation reps for each combination of parameters. In the top right panel, solid circles show the combinations of site-level immigration and replacement rates used in null model simulations.
+
+```{r, fig.width = 10, fig.height = 10}
+
+# Figure S4
+
+# summarise by spp, year, and center around zero
+tmp <- simdat.spp %>%
+  filter(!is.na(abun)) %>%
+  group_by(sp, year) %>%
+  summarise(abun = mean(abun)) %>%
+  ungroup() %>%
+  mutate(abun = abun - mean(abun))
+
+# append traits and gather
+tmp <- cbind(tmp, trait.data[match(tmp$sp, trait.data$species), names(traits2)])
+tmp <- gather_(tmp, "trait", "value", names(traits2))
+
+# linear models to test for trends
+mods <- tmp %>% 
+  group_by(trait, year) %>% 
+  do(mod = lm(abun ~ value, data = .)) %>%
+  mutate(
+    pval = summary(mod)[['coefficients']][2,4],
+    box = ifelse(trait %in% c('leaf.area','max.height','sla','buds','seed.mass'), 0, 1))
+
+tmp <- cbind(tmp, mods[match(paste(tmp$trait, tmp$year), paste(mods$trait, mods$year)), c('pval','box')])
+tmp$trait <- factor(traits2[match(tmp$trait, names(traits2))], traits2)
+
+# 2013 data
+tmp <- filter(tmp, year == 2013)
+
+# Determine spp regional abundance as a measure of spp importance
+regabun <- as.data.frame(colSums(cover[cover.meta$TTtreat %in% c('TTC','TT1'), ]))
+regabun <- data.frame(sp = row.names(regabun), abun = regabun[,1] / sum(regabun[,1]))
+tmp$Regional.abun <- regabun$abun[match(tmp$sp, regabun$sp)]
+
+figS4 <- ggplot(tmp, aes(x = value, y = abun)) +
+  geom_point(data = filter(tmp, box == 0), aes(size = Regional.abun)) +
+  geom_boxplot(data = filter(tmp, box == 1), aes(group = value)) +
+  stat_smooth(method = 'lm', data = filter(tmp, pval < 0.1 & pval > 0.05), lty = 2, color = 'red') +
+  stat_smooth(method = 'lm', data = filter(tmp, pval < 0.05), color = 'red') +
+  facet_wrap(~trait, scale = 'free') +
+  geom_hline(yintercept = 0, lty = 2, color = 'black') +
+  ylab("Mean deviation in abundance from null expectations") +
+  xlab("Trait Value")
+
+figS4
+```
+
+####**Figure S4.** Differences between predicted and observed species abundances in 2013, plotted by trait value using scatterplots (continuous traits) or boxplots (binary traits). Red lines and 95% confidence intervals are shown when there are significant (solid red line) or nearly significant (dashed red line) relationships. The diameter of each solid circle is proportional to its abundance in the region.
+
+### Print PDFs and beautified species trait data in .csv format
 
 ```{r}
-dir.create("figures")
+dir.create("//MS_TraitsTransplants//figures")
 setwd(paste0(wd, "//MS_TraitsTransplants//figures"))
 pdf("figure2.pdf", width = 5, height = 9.5)
 print(fig2)
@@ -612,23 +644,29 @@ pdf("figure4.pdf", width = 6, height = 7.5)
 print(fig4)
 dev.off()
 
-pdf("figureS1.pdf", width = 7, height = 6)
+pdf("figureS1.pdf", width = 6, height = 5)
 print(figS1)
 dev.off()
 
-pdf("figureS2.pdf", width = 6, height = 7.5)
+pdf("figureS2.pdf", width = 6, height = 3)
 print(figS2)
 dev.off()
 
+pdf("figureS3.pdf", width = 6, height = 3)
+print(figS3)
+dev.off()
+
+pdf("figureS4.pdf", width = 8, height = 8)
+print(figS4)
+dev.off()
+
+# write a beautified version of the trait table for supplementary materials
 tmp <- plyr::ldply(strsplit(as.character(trait.data.full$species), ' '))
-x <- trait.data.full[, trait.list3]
-names(x) <- trait.list2[match(names(x), names(trait.list2))]
-x <- cbind(data.frame(Family = trait.data.full$family,
-                      Genus = tmp$V1,
-                      Species = tmp$V2), x)
+x <- trait.data.full[, names(traits2)]
+names(x) <- traits3[match(names(x), names(traits3))]
+x <- cbind(data.frame(Family = trait.data.full$family, Genus = tmp$V1, 
+  Species = tmp$V2), x)
 x[, 4:7] <- apply(x[, 4:7], 2, function(x) format(round(as.numeric(x), 3), 3))
 write.csv(x, file = 'traitdataTable.csv', row.names = F)
 
-# avoid warning
-setwd(wd0)
 ```

@@ -1,9 +1,7 @@
-# custom functions
-
-# ipak function: install and load multiple R packages.
-# check to see if packages are installed. Install them if they are not, then load them into the R session.
+# My custom/collected functions
 
 loadpax <- function(pkg){
+  # (1) checks package installation, (2) installs them if not, then (3) loads them
     new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
     if (length(new.pkg)) 
         install.packages(new.pkg, dependencies = TRUE)
@@ -104,25 +102,6 @@ probfixes = function (vec, probs = names(probs), fixes = probs) {
   return(vec)
 }
 
-facet_wrap_labeller <- function(gg.plot,labels = NULL) {
-  #works with R 3.0.1 and ggplot2 0.9.3.1
-  require(gridExtra)
-
-  g <- ggplotGrob(gg.plot)
-  gg <- g$grobs      
-  strips <- grep("strip_t", names(gg))
-
-  for(ii in seq_along(labels))  {
-    modgrob <- getGrob(gg[[strips[ii]]], "strip.text", 
-                       grep=TRUE, global=TRUE)
-    gg[[strips[ii]]]$children[[modgrob$name]] <- editGrob(modgrob,label=labels[ii])
-  }
-
-  g$grobs <- gg
-  class(g) = c("arrange", "ggplot",class(g)) 
-  return(g)
-}
-
 # print list of loaded functions
 print(data.frame(Custom_Functions = 
   c('loadpax: install+load multiple packages',
@@ -133,5 +112,4 @@ print(data.frame(Custom_Functions =
     'stat_sum_single: a plotting function', 
     'fmt: a plotting function',
     'process.comm: Calculates trait/veg distances to controls',
-    'probfixes: corrects taxonomic inconsitencies',
-    'facet_wrap_labeller: use expressions in facet_wrap')))
+    'probfixes: corrects taxonomic inconsitencies')))

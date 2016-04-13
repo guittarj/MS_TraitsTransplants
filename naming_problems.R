@@ -24,7 +24,7 @@ probs <- c(
 # naming fixes of substrings (i.e., not full string)
 partial.fixes <- c(' cf' = '', '  ' = ' ', ' ' = '.')
 
-# naming fixes of whole strings
+# naming fixes of whole strings; problems (left) and resolutions (right) 
 full.fixes <- c(
 "Agr" = "Agr.cap",
 "Agr.sp" = "Agr.cap",

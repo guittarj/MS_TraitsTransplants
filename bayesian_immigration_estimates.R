@@ -1,6 +1,8 @@
 # A script that estimates immigration rates using JAGS, given the rates of turnover
 # we observe in local controls, and the composition of controls at the site level
 
+setwd(wd)
+
 #load packages
 loadpax(c("scales","R2jags", "lattice"))
 
@@ -8,115 +10,108 @@ loadpax(c("scales","R2jags", "lattice"))
 cover0 <- round((cover * 100) / rowSums(cover))
 
 # initialize
-dats <- list()
-dats.meta <- data.frame(site = character(), sp = character(), rep = integer())
-i <- 1
+mvals <- data.frame(site = character(), m = numeric(), rep = integer())
+posts <- list()
 rhat <- data.frame(deviance = numeric(), m = numeric())
 
 # for each site...
 for(site in unique(cover.meta$siteID)) {
   # a filter vector for TTCs by site
-  filt.flora <- cover.meta$TTtreat == 'TTC' & 
-                cover.meta$destSiteID == site &
-                cover.meta$Year %in% c(2011:2013)
+  site.filt <- cover.meta$TTtreat == 'TTC' & 
+               cover.meta$destSiteID == site &
+               cover.meta$Year %in% c(2011:2013)
 
   # a filter vector for TT1s by site
-  filt <- cover.meta$TTtreat == 'TT1' & 
-          cover.meta$destSiteID == site &
-          cover.meta$Year %in% c(2011:2013)
+  turf.filt <- cover.meta$TTtreat == 'TT1' & 
+               cover.meta$destSiteID == site &
+               cover.meta$Year %in% c(2011:2013)
   
-  # list of site species (using TT1s)
-  spp <- sort(colSums(cover0[filt, ]), decreasing = TRUE)
-  spp <- names(spp[spp > 0])
+  # relative abundances in TT1s by year
+  N <- as.data.frame(cbind(cover0[turf.filt, ], cover.meta[turf.filt, c('Year','turfID')]))
+  N <- N %>%
+    gather(sp, N0, -turfID, -Year) %>%
+    group_by(turfID, sp) %>%
+    mutate(N1 = ifelse(Year == 2013, NA, 
+                ifelse(Year == 2012, N0[Year == 2013], N0[Year == 2012])))
+  
+  turfabun <- N %>%
+    group_by(turfID, Year) %>%
+    mutate(abun = N0 / sum(N0))
   
   # matrix of total cover for each turf * year (using TT1s)
-  totcov <- rowSums(cover0[filt, ])
-  totcov <- matrix(totcov, ncol = 3, byrow = TRUE)
+  commN <- N %>%
+    group_by(turfID, Year) %>%
+    summarise(N = sum(N0))
+  commN <- commN[match(N$turfID, commN$turfID), ]
 
-  # for each species...
-  for(sp in spp) {
-    # ticker, if desired
-    #print(paste0(site, ': ', sp, ', sp.', match(sp, spp), ' of ', length(spp))) ; flush.console()
-    
-    # relative abundances in TT1s by year
-    N <- data.frame(sp = cover0[filt, sp] , yr = cover.meta$Year[filt], row.names = NULL)
-    cover1 <- mutate(N, sp = sp / rowSums(cover0[filt, ]))
-    N <- matrix(N$sp, ncol = 3, byrow = TRUE)
-    cover1 <- matrix(cover1$sp, ncol = 3, byrow = TRUE)
-    
-    # Using mean relative abundances in TTCs for local flora source
-    N.flora <- data.frame(sp = cover0[filt.flora, sp] , yr = cover.meta$Year[filt.flora], row.names = NULL)
-    cover1.flora <- mutate(N.flora, sp = sp / rowSums(cover0[filt.flora, ]))
-    N.flora <- matrix(N.flora$sp, ncol = 3, byrow = TRUE)
-    cover1.flora <- matrix(cover1.flora$sp, ncol = 3, byrow = TRUE)
-    regional <- colMeans(cover1.flora)
+  # Using mean relative abundances in TTCs for local flora source
+  siteabun <- as.data.frame(cbind(cover0[site.filt, ], cover.meta[site.filt, c('turfID','Year')]))
+  siteabun <- siteabun %>%
+    gather(sp, abun, -turfID, -Year) %>%
+    group_by(turfID, Year) %>%
+    mutate(abun = abun / sum(abun)) %>%
+    group_by(sp, Year) %>%
+    summarize(abun = mean(abun))
+  
+  siteabun <- siteabun[match(N$sp, siteabun$sp), ]
+  
+  #filter out situations where the spp aren't in the site flora at all (bc errors)
+  filt <- siteabun %>%
+    group_by(sp) %>%
+    mutate(filt = ifelse(sum(abun == 0) > 0, FALSE, TRUE))
+  filt <- filt$filt & !is.na(N$N1)
+  
+  N1 <- N$N1[filt]
+  commN <- commN$N[filt]
+  turfabun <- turfabun$abun[filt]
+  siteabun <- siteabun$abun[filt]
+  N1P <- N1
 
-    # determine N
-    rowz <- nrow(N)
+  # organize into a list
+  data <- list('N1','commN','turfabun','siteabun')
 
-    # organize into a list
-    data <- list("cover1", "totcov", "regional", "N", "rowz")
-
-    # Initialize
-    inits <- seq(0.1, 0.9, 0.5)
-    inits <- lapply(as.list(inits), function(x) list(m = x))
-    reps <- length(inits)
-    parameters <- c("m")
-
-    if(!0 %in% colSums(N.flora)) {
-      sink(paste0(wd, "\\model.txt"))
-      cat("
-        model { 
-          for(i in 1:rowz) { #i is plot
-            for(t in 1:2) {  #t is year         
-              N[i, t + 1] ~ dpois(lambda[i, t])
-              lambda[i, t] <- totcov[i, t] * ((1 - m) * cover1[i, t] + m * regional[t])
-            }
-         }  
-          m ~ dunif(0,1)
-        }
-        ",fill=TRUE)
-      sink()
-
-      m1 <- jags(data, inits, parameters, "model.txt", n.thin = 50, n.chains = reps, n.burnin = 1000, n.iter = 10000)
-      rhat <- rbind(rhat, m1$BUGSoutput$summary[, 'Rhat'])
-      m1.mcmc <- as.mcmc(m1)
-
-      for (j in 0:(reps - 1)) {
-        dats[[i + j]] <- as.data.frame(m1.mcmc[[j + 1]])$m
-        dats.meta <- rbind(dats.meta, data.frame(site = site, 
-                                                 sp   = sp, 
-                                                 rep  = j + 1))
+  # Initialize
+  inits <- lapply(as.list(c(0.1, 0.9, 0.5)), function(x) list(m = x))
+  reps <- length(inits)
+  parameters <- c('m', 'N1P')
+  
+  sink(paste0(wd, "\\model.txt"))
+  cat("
+    model { 
+      for (i in 1:length(N1)) {
+        N1[i] ~ dpois(commN[i] * ((1 - m) * turfabun[i] + m * siteabun[i]))
+      }
+      m ~ dunif(0, 1) # nothing changes if m ~ dunif(0, 0.5)
+      for (i in 1:length(N1)) {
+        zN1P[i] ~ dpois(commN[i] * ((1 - m) * turfabun[i] + m * siteabun[i]))
+        N1P[i] <- zN1P[i]
       }
     }
-    
-    i <- i + reps
-
-  }
+    ", fill=TRUE)
+  sink()
+  m1 <- jags(data, inits, parameters, "model.txt", n.thin = 50, 
+    n.chains = reps, n.burnin = 1000, n.iter = 10000)
+  rhat <- rbind(rhat, m1$BUGSoutput$summary[, 'Rhat'])
+  m1.mcmc <- as.mcmc(m1)
+  
+  tmp <- sapply(m1.mcmc, function(x) mean(x[, 'm']))
+  mvals <- rbind(mvals, data.frame(site, m = tmp, rep = 1:length(inits)))
+  
+  tmp <- as.matrix(m1.mcmc[[2]])[, -c(1,2)]
+  tmp.ordr <- gsub(pattern = 'N1P\\[', '', colnames(tmp))
+  tmp.ordr <- as.numeric(gsub(pattern = '\\]', '', tmp.ordr))
+  tmp <- colMeans(tmp[, match(1:ncol(tmp), tmp.ordr)])
+  tmp <- data.frame(N1 = N1, N1_predicted = tmp)
+  posts[[site]] <- tmp
+  
 }
 
-lengs <- lapply(dats, length)
-dats <- unlist(lapply(dats[lengs > 0], mean))
-m.bayes <- mutate(dats.meta, m = dats)
+rsq <- do.call('rbind', posts)
+rsq <- summary(lm(N1 ~ N1_predicted, rsq))$r.squared
+rsq
 
-# Visualize immigration rates by species as a running average
-tmp <- group_by(m.bayes, site) %>%
-       mutate(seq    = seq_along(m),
-              cumave = cumsum(m) / seq)
+m.bayes <- mvals %>% 
+  group_by(site) %>% 
+  summarise(m = mean(m))
 
-figBayesMeans <- ggplot(tmp, aes(x = seq, y = cumave, color = site)) +
-geom_line()
-x11()
-print(figBayesMeans)
-
-pdf("figureBayesMeans.pdf", width = 10, height = 8)
-print(figBayesMeans)
-dev.off()
-
-flush.console()
-
-# write summary file
-# m.bayes <- group_by(m.bayes, site) %>%
-#            summarise(m = mean(m))
-
-# write.csv(m.bayes, file = "data\\m.bayes.csv", row.names = FALSE)
+write.csv(m.bayes, file = "data\\m.bayes.csv", row.names = FALSE)

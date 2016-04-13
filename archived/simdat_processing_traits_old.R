@@ -1,9 +1,24 @@
-# Processing simulation data produced by 'neutral_simulation.R' + 'simdat_processing_veg.R'
-# Calculate trait distances in simulations that used desired parameters
+# Processing the simulation data produced by 'neutral_simulation.R' and 
+# summarized by 'simdat_processing_veg.R'
 
-wd.simdat <- 'G:\\sim_bayes'
-setwd(wd)
-simdat.veg <- fread("data\\simSummary_bayes_veg.csv", drop = 1)
+# There are two ways of estimate parameter values. One way is by using the 
+# 'bayesian_immigration_estimates.R' script. Another way is to choose best-fit parameters to 
+# observed rates of vegetation change (currently performed in TraitsTransplants.Rmd -> "rates")
+
+# Calculate trait distances in simulations that used desired parameters
+if (pars.method == 'max') {
+  wd.simdat <- 'E:\\sim_max'
+  setwd(wd)
+  simdat.veg <- fread("data\\simSummary_max_veg.csv")
+  pars <- pars.max  
+}
+
+if (pars.method == 'bayes') {
+  wd.simdat <- 'G:\\sim_bayes'
+  setwd(wd)
+  simdat.veg <- fread("data\\simSummary_bayes_veg.csv", drop = 1)
+  pars <- pars.bayes
+}
 
 setwd(wd.simdat)
 sim.list <- list.files()
@@ -44,5 +59,14 @@ for(i in sim.list) {
   }
 }
 
-write.csv(simdat, row.names = FALSE, file = 'data\\simSummary_bayes_traits.csv')
+# Add 2009 data for each simulation run
 
+# finalize
+setwd(wd)
+if(pars.method == 'bayes') {
+  write.csv(simdat, row.names = FALSE, file = 'data\\simSummary_bayes_traits.csv')
+}
+
+if(pars.method == 'max') {
+  write.csv(simdat, row.names = FALSE, file = 'data\\simSummary_max_traits.csv')
+}

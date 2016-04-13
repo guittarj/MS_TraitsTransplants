@@ -1,11 +1,11 @@
-# Script for simulation of neutral community dynamics in seedclim grid
+# Script for simulation of neutral community dynamics
 
 # -------------------------------------------------------
 # User settings
 
 # where should newly generated data go?
-wd.sim <- ''
-setwd(wd.sim)
+# wd.sim <- 'G:\\sim_bayes'
+# setwd(wd.sim)
 # dir.create(file.path(paste0(wd, wd.sim)))
 
 # Define replacement (d) and immigration (m) rates
@@ -13,17 +13,17 @@ setwd(wd.sim)
 # d.vals <- seq(0, 100, by = 5)
 
 # Or, pull turnover rates as calculated in TraitsTransplants.Rmd
-d.vals <- round(rates$turnover)
+# d.vals <- round(rates$turnover)
 
 # Immigration: all new individuals will come from turf (m = 0) or site (m = 1).
-m.vals <- seq(0, 1, by = 0.025)
+# m.vals <- seq(0, 1, by = 0.025)
 
 # Or, pull immigration rates as calculated from 'bayesian_immigration_estimate.R'
 # m.vals <- signif(m.bayes$m, 3)
 
 # Which rep numbers do you want to perform?
-rep0 <- 1 
-rep1 <- 10
+# rep0 <- 1
+# rep1 <- 33
 
 # -------------------------------------------------------
 # Simulation

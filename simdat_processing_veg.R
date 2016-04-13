@@ -8,13 +8,13 @@
 # factors when saving data, thereby saving lots of space, whereas a .csv saves every line as a new 
 # string (thus, one survey was over 250mb.
 
-wd.simdat <- 'E:\\sim_max'
+wd.simdat <- 'G:\\sim_bayes'
 setwd(wd.simdat)
 sim.list <- list.files()
 
 # divide file list by the number of chunks if desired, to speed up computation
 chunk <- 1 # of
-chunks <- 4 # total
+chunks <- 3 # total
 chunk0 <- round(length(sim.list) / chunks * (chunk - 1))
 chunk1 <- round(length(sim.list) / chunks * chunk)
 sim.list <- sim.list[chunk0:chunk1]
@@ -29,33 +29,29 @@ for (i in sim.list) {
     
     # Summarize periodially and at the end...
     if(progress %% 50 == 0| progress == length(sim.list)) {
-      simdat <- group_by(simdat, trait, turfID, year, m, d) %>%
-                summarise(dist.tt1 = weighted.mean(dist.tt1, w = reps),
-                          reps     = sum(reps))
+      simdat <- simdat %>%
+        group_by(trait, turfID, year, m, d) %>%
+        summarise(dist.tt1 = weighted.mean(dist.tt1, w = reps), reps     = sum(reps))
       print(paste(progress, 'of', length(sim.list)))
       flush.console()
 }}
 
 # write chunks
-chunks.dir <- paste0(wd, '\\data\\chunks')
-dir.create(chunks.dir)
-setwd(chunks.dir)
 chunks.dir <- paste0(wd, '\\data\\chunks\\', as.character(Sys.Date()))
 dir.create(chunks.dir)
 setwd(chunks.dir)
 write.csv(simdat, file = paste0('simSummary_veg_chunk', chunk, 'of', chunks, '.csv'))
 
-# merge chunks
-setwd(chunks.dir)
-chunks <- list.files()
-simdat <- plyr::ldply(chunks, fread, sep = ',', header = TRUE, drop = c('V1'))
+# # merge chunks
+# setwd(chunks.dir)
+# chunks <- list.files()
+# simdat2 <- plyr::ldply(chunks, fread, sep = ',', header = TRUE, drop = c('V1'))
 
-# Convert to data.table to speed up aggregation
-simdat.veg <- data.table(simdat)
-simdat.veg <- group_by(simdat.veg, trait, turfID, year, m, d) %>%
-              summarise(dist.tt1 = weighted.mean(dist.tt1, w = reps),
-                        reps     = sum(reps))
+# # Convert to data.table to speed up aggregation
+# simdat.veg <- data.table(simdat2) %>%
+#   group_by(trait, turfID, year, m, d) %>%
+#   summarise(dist.tt1 = weighted.mean(dist.tt1, w = reps), reps = sum(reps))
 
-# Write table as an .rda file because a .csv is too big 
-setwd(wd)
-save(simdat.veg, file = 'data\\simSummary_survey_veg.rda')
+# # Write table as an .rda file because a .csv is too big 
+# setwd(wd)
+# save(simdat.veg, file = 'data\\simSummary_bayes_veg.rda')
