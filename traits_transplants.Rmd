@@ -1,6 +1,6 @@
 ---
 title: 'Can trait patterns along gradients predict plant community responses to climate change?'
-author: 'John Guittar, Vigdis Vandvik, Kari Klanderud, Richard Telford, Deborah Goldberg'
+author: 'John Guittar, Deborah Goldberg, Kari Klanderud, Richard Telford, Vigdis Vandvik'
 output: html_document
 ---
 
@@ -73,7 +73,7 @@ cover <- as.matrix(read.csv(row.names = 1, file = 'data\\cover.csv'))
 cover.meta <- read.csv(file = 'data\\covermeta.csv')
 trait.data.full <- read.csv(file = 'data\\traitdata.csv', stringsAsFactors = FALSE)
 trait.data <- trait.data.full %>%
-  select(speciescode, leaf.area, max.height, seed.mass, sla, conper, offs, lat, buds) %>%
+  dplyr::select(speciescode, leaf.area, max.height, seed.mass, sla, conper, offs, lat, buds) %>%
   rename(species = speciescode)
 clim.years <- read.csv('data\\clim_years.csv')
 clim.transplants <- read.csv(file = 'data\\clim_transplants.csv')
@@ -258,19 +258,20 @@ x <- x %>%
 tats$variable.label <- ifelse(tats$variable == 'temp', as.character(env.vars[1]), 
   paste0(as.character(env.vars[2])))
 
+x$lty <- ifelse(x$trait == 'sla' & x$variable == 'precip', x$temp.level + 1, 1)
+
 # Plot
-fig2 <- ggplot(x, aes(x = value, y = cwm, weight = len, group = 1, fill = factor(precip.level), 
-    shape = factor(temp.level))) +
+fig2 <- ggplot(x, aes(x = value, y = cwm, group = 1, weight = len, fill = factor(precip.level), lty = factor(lty), shape = factor(temp.level))) +
   geom_point() +
   scale_shape_manual(values = c(24,21,25)) +
+  scale_linetype_manual(values = c('solid','dotted','dashed','dotdash')) +
   scale_fill_manual(values = c("#FFFFFF", "#C6CBCC", "#8A8587", "#000000")) +
-  geom_pointrange(aes(ymin = cwm - sd, ymax = cwm + sd)) +
+  geom_pointrange(aes(ymin = cwm - sd, ymax = cwm + sd), lty = 1) +
   facet_grid(trait.label ~ variable.label, scales = 'free', labeller = label_parsed) + 
   stat_smooth(method = 'lm', formula = y ~ exp(-x), se = FALSE, color = 'black',
     data = filter(x, trait  %in% c('conper', 'buds') & variable == 'temp')) +
-  stat_smooth(method = 'lm', se = FALSE, color = 'black', 
-    data = filter(x, paste(trait, variable) %in% 
-      paste(tats$trait, tats$variable)[tats$trait != 'conper'])) + 
+  stat_smooth(method = 'lm', se = FALSE, color = 'black', data = filter(x, trait %in% c('leaf.area', 'max.height', 'lat', 'sla') & variable == 'temp')) + 
+  stat_smooth(aes(group = factor(lty)), method = 'lm', se = FALSE, color = 'black', data = filter(x, trait == 'sla' & variable == 'precip'))  +
   labs(x = '', y = '') +
   theme_bw() +
   theme(
@@ -298,7 +299,7 @@ tmp <- tats.full %>%
   arrange(Trait)
 
 tmp[, 3:5] <- apply(tmp[, 3:5], 2, function(x) format(round(as.numeric(x), 2), nsmall = 2))
-tmp$"p-value" <- ifelse(tmp$"p-value" > 0.05, 'NS', ifelse(tmp$"p-value" < 0.001, '< 0.001', format(round(tmp$"p-value", 3), 3)))
+#tmp$"p-value" <- ifelse(tmp$"p-value" > 0.05, 'NS', ifelse(tmp$"p-value" < 0.001, '< 0.001', format(round(tmp$"p-value", 3), 3)))
 tmp[tmp$"p-value" == 'NS', c('Estimate', 'SE', 't-statistic')] <- ''
 tmp[tmp$Estimate == "  0.00", c('Estimate', 'SE')] <- '< 0.01'
 tmp$Trait[!1:nrow(tmp) %in% match(unique(tmp$Trait), tmp$Trait)] <- ''
@@ -667,6 +668,6 @@ names(x) <- traits3[match(names(x), names(traits3))]
 x <- cbind(data.frame(Family = trait.data.full$family, Genus = tmp$V1, 
   Species = tmp$V2), x)
 x[, 4:7] <- apply(x[, 4:7], 2, function(x) format(round(as.numeric(x), 3), 3))
-write.csv(x, file = 'traitdataTable.csv', row.names = F)
+write.csv(x, file = 'SpeciesData.csv', row.names = F)
 
 ```

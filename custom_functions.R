@@ -93,13 +93,48 @@ process.comm = function(comm, trait) {
   return(comp.sims)
 }
 
-probfixes = function (vec, probs = names(probs), fixes = probs) {
+probfixes = function (vec, probs, fixes) {
   # A function that resolves any naming inconsitencies in a vector (vec)
 
   for(i in 1:length(probs)) {
-    vec <- gsub(probs[i], fixes[i], vec)
+    vec <- ifelse(as.character(vec) == as.character(probs[i]), as.character(fixes[i]), as.character(vec))
   }
   return(vec)
+}
+
+rao.fun <- function(traitvals, abuns) {
+  abuns <- abuns[!is.na(traitvals)]
+  traitvals <- traitvals[!is.na(traitvals)]
+  p <- abuns / sum(abuns)
+  d <- as.matrix(dist(traitvals))
+  rao <- as.numeric(p %*% (d %*% p) / 2)
+  return(rao)
+}
+
+grid_arrange_shared_legend <- function(..., ncol = length(list(...)), nrow = 1, position = c("bottom", "right")) {
+  # A function that lets you put multiple plots together and have a single shared legend (from the first plot)
+  # from hadley on the internet...
+  plots <- list(...)
+  position <- match.arg(position)
+  g <- ggplotGrob(plots[[1]] + theme(legend.position = position))$grobs
+  legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+  lheight <- sum(legend$height)
+  lwidth <- sum(legend$width)
+  gl <- lapply(plots, function(x) x + theme(legend.position="none"))
+  gl <- c(gl, ncol = ncol, nrow = nrow)
+
+  combined <- switch(position,
+                     "bottom" = arrangeGrob(do.call(arrangeGrob, gl),
+                                            legend,
+                                            ncol = 1,
+                                            heights = unit.c(unit(1, "npc") - lheight, lheight)),
+                     "right" = arrangeGrob(do.call(arrangeGrob, gl),
+                                           legend,
+                                           ncol = 2,
+                                           widths = unit.c(unit(1, "npc") - lwidth, lwidth)))
+  grid.newpage()
+  grid.draw(combined)
+
 }
 
 # print list of loaded functions
@@ -112,4 +147,6 @@ print(data.frame(Custom_Functions =
     'stat_sum_single: a plotting function', 
     'fmt: a plotting function',
     'process.comm: Calculates trait/veg distances to controls',
-    'probfixes: corrects taxonomic inconsitencies')))
+    'probfixes: corrects taxonomic inconsitencies',
+    'grid_arrange_shared_legend: Multiple plots, one legend',
+    'rao-fun: calculates Rao quadratic entropy index')))

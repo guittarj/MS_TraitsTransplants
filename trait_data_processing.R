@@ -27,7 +27,7 @@ loadpax(pkg = c('RODBC', 'dplyr', 'tidyr', 'reshape2'))
 
 # Create species list
 
-splist <- read.csv('SpeciesList2013.csv', header = TRUE, stringsAsFactors = FALSE)
+splist <- read.csv('SpeciesList2016_08_30.csv', header = TRUE, stringsAsFactors = FALSE)
 splist <- transmute(splist, speciescode      = species,
                             species          = speciesName,
                             family           = family,
@@ -36,8 +36,11 @@ splist <- transmute(splist, speciescode      = species,
 
 # Load naming problem lists, correct names
 source("C:\\Users\\John\\Google Drive\\Documents\\michigan\\seedclim\\MS_TraitsTransplants\\naming_problems.R")
-splist$species <-  probfixes(splist$species, names(probs), probs)
-  
+splist$species <-  probfixes(as.character(splist$species), names(probs), probs)
+
+# Load species name 'dictionary'.
+dict <- read.csv("SpeciesCodeDictionary.csv", stringsAsFactors = FALSE)
+
 # --------------------------------------------------------------------------------------------------
 
 # Load trait data
@@ -54,13 +57,13 @@ sla <- rbind(
   my.sla %>%
     transmute(
       source  = 'my',
-      species = probfixes(Species, names(probs), probs),
+      species = probfixes(as.character(Species), names(probs), probs),
       val     = SLA..m2.kg.1.),
   leda.sla %>%
     filter(general.method != 'laboratory/greenhouse/garden experiment') %>%
     transmute(
       source = 'leda',
-      species = probfixes(SBS.name, names(probs), probs),
+      species = probfixes(as.character(SBS.name), names(probs), probs),
       val = Single.Value..LEDA.))
 
 sla <- group_by(sla, source, species) %>% 
@@ -76,11 +79,11 @@ sla <- sla %>% group_by(species) %>% summarise(sla = mean(val))
 leaf.area <- rbind(
   transmute(my.leaf.area,
     source  = 'my',
-    species = probfixes(Species, names(probs), probs),
+    species = probfixes(as.character(Species), names(probs), probs),
     val     = LeafArea * 100),
   filter(leda.leaf.area, general.method != 'laboratory/greenhouse/garden experiment') %>%
   transmute(source  = 'leda',
-    species = probfixes(SBS.name, names(probs), probs),
+    species = probfixes(as.character(SBS.name), names(probs), probs),
     val     = single.value..mm.2.) %>%
                      filter(val < 5000 & val != 0 & !is.na(val)))
 
@@ -94,18 +97,18 @@ leaf.area <- leaf.area %>% group_by(species) %>% summarise(leaf.area = mean(val)
 
 seed.mass <- leda.seed.mass %>%
   transmute(
-    species = probfixes(SBS.name, names(probs), probs),
+    species = probfixes(as.character(SBS.name), names(probs), probs),
     val     = single.value..mg.) %>%
   filter(val < 50 & val > 0) %>%
   group_by(species) %>%
   summarise(seed.mass = mean(val, na.rm = TRUE))
 
 max.height <- norflor.height %>%
-  transmute(species = probfixes(speciesName, names(probs), probs), max.height = Max.height / 100) %>%
+  transmute(species = probfixes(as.character(speciesName), names(probs), probs), max.height = Max.height / 100) %>%
   filter(max.height < 2)
 
 clopla <- clopla.root %>%
-  mutate(species = probfixes(Species, names(probs), probs)) %>%
+  mutate(species = probfixes(as.character(Species), names(probs), probs)) %>%
   filter(species %in% splist$species)
 
 clopla <- clopla %>%
@@ -132,7 +135,7 @@ clopla.buds <- clopla %>%
   summarise(buds = sum(buds))
 
 # filter and convert clonal traits to binaries (high/low)
-clopla <- clopla %>%
+clopla <- ungroup(clopla) %>%
   filter(species %in% splist$species) %>%
   transmute(species,
     conper = ifelse(conper == '2+', 1, 0), 
@@ -255,7 +258,7 @@ odbcCloseAll()
 
 # Save unpruned versions
 cover.all <- cover[, !names(cover) %in% c('NID.gram', 'NID.herb', 'NID.rosett', 'NID.seedling')]
-trait.data.all <- trait.data[trait.data$speciescode %in% names(cover.all), ]
+#trait.data.all <- trait.data[trait.data$speciescode %in% names(cover.all), ]
 
 # now filter trees/shrubs, 'sp' ambiguities when other species in that genus are present
 trait.data <- trait.data %>%
@@ -270,13 +273,24 @@ trait.data <- within(trait.data, {
 
 # Now prune entries without trait data
 cover <- cover.all[, names(cover.all) %in% trait.data$speciescode] # gets rid of UIDs
-trait.data <- trait.data[trait.data$speciescode %in% names(cover), ]
+#trait.data <- trait.data[trait.data$speciescode %in% names(cover), ]
 
 #verify again
 all(with(cover.meta, paste(turfID, Year, sep = '_')) == rownames(cover))
 
+# remove a few trait data duplicates
+trait.data1 <- trait.data %>%
+  mutate(
+    speciescode = probfixes(as.character(speciescode), names(full.fixes), full.fixes)) %>%
+  select(-species, -family) %>%
+  group_by(speciescode, graminoid, perennial) %>%
+  summarise_each(funs(mean(., na.rm = TRUE))) %>%
+  mutate(species = dict$Species[match(speciescode, dict$Species.code)]) %>%
+  ungroup()
+
 # save and finish
-write.csv(cover, file = 'cover.csv')
-write.csv(cover.all, file = 'cover_all.csv')
-write.csv(cover.meta, row.names = FALSE, file = 'covermeta.csv')
+#write.csv(cover, file = 'cover.csv')
+#write.csv(cover.all, file = 'cover_all.csv')
+#write.csv(cover.meta, row.names = FALSE, file = 'covermeta.csv')
 write.csv(trait.data, row.names = FALSE, file = 'traitdata.csv')
+
